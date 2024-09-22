@@ -45,47 +45,30 @@ function* pickMapsGenerator(mapManager, numOfMapsToPlay, pickOrder) {
   return mapManager.getPickedMaps();
 }
 
-export function* manageMapSelection(playerNames, mapManager) {
-  console.log(messages.pickNumberOfMapsToPlay());
-  let numOfMapsToPlay = parseInt(yield);
-  console.log(messages.pickFirstPlayer(playerNames));
-  let firstPlayer = yield;
-  if (!playerNames.includes(firstPlayer)) {
-    console.log(messages.invalidPlayerPicked(firstPlayer, playerNames));
-    firstPlayer = yield;
-  }
-  const numOfMapsToBan = mapManager.getMapCount() - numOfMapsToPlay;
-  const banOrder = [];
-  for (let i = 0; i < numOfMapsToBan; i++) {
-    banOrder.push(
-      playerNames[(playerNames.indexOf(firstPlayer) + i) % playerNames.length]
-    );
-  }
-  const pickOrder = [];
-  let secondPlayer = playerNames.find((p) => p !== firstPlayer);
-  pickOrder.push(firstPlayer);
-  for (let i = 1; i < numOfMapsToPlay - 2; i++) {
-    pickOrder.push(i % 2 === 0 ? firstPlayer : secondPlayer);
-  }
-  pickOrder.push(secondPlayer, secondPlayer);
-  console.log(messages.listBanOrder(banOrder));
-  console.log(messages.listPickOrder(pickOrder));
-  console.log(messages.listNumberOfMapsToBan(numOfMapsToBan));
-  yield* runInputGenerator(banMapsGenerator(mapManager, numOfMapsToBan, banOrder));
-  yield* runInputGenerator(pickMapsGenerator(mapManager, numOfMapsToPlay, pickOrder));
+// TODO: modify turn manager to handle pick and ban index
+export function* manageMapSelection({ mapManager, turnManager, ipc }) {
+  console.log(messages.listBanOrder(turnManager.banOrder));
+  console.log(messages.listPickOrder(turnManager.pickOrder));
+  console.log(messages.listNumberOfMapsToBan(turnManager.banOrder.length));
+  const banGen = banMapsGenerator(mapManager, turnManager.banOrder.length, turnManager.banOrder);
+  yield* runInputGenerator(banGen, ipc);
+  const pickGen = pickMapsGenerator(mapManager, turnManager.pickOrder.length, turnManager.pickOrder);
+  yield* runInputGenerator(pickGen, ipc);
   return {
       pickedMaps: mapManager.getPickedMaps(),
       bannedMaps: mapManager.getBannedMaps(),
   };
 }
 
-function* runInputGenerator(generator) {
+function* runInputGenerator(generator, ipc) {
     let result = generator.next();
     while(!result.done) {
         if (result.value) {
+            ipc.server.broadcast("app.message", { id: ipc.config.id, message: { type: 'info', info: result.value } })
             console.log(result.value.message);
             result = generator.next();
         } else {
+            
             const input = yield;
             result = generator.next(input);
         }
